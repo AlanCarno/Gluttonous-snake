@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script type="importmap">
+        {
+        "imports": {
+            "three": "https://unpkg.com/three/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three/examples/jsm/"
+        }
+        }
+    </script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+        }
+
+        #th {
+            height: 100%;
+            width: 100%;
+        }
+
+        .acclerate {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            color: red;
+            font-size: larger;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="th"></canvas>
+    <button class="acclerate">click to acclerate</button>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+        const canvas = document.querySelector("#th")
+        const acclerate = document.querySelector(".acclerate");
+
+        const mat1 = new THREE.MeshPhongMaterial({ color: 0x33ff00 });
+        const mat2 = new THREE.MeshPhongMaterial({ color: 0xCC8866 });
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.set(0, 0, 40);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        const controls = new OrbitControls(camera, renderer.domElement);
+
+        const loader = new THREE.TextureLoader();
+        const textureMat = new THREE.MeshBasicMaterial({ map: loader.load('img/fb3f84a0990a6f29837feeed3b1b3f15.jpeg') })
+        // 光影
+        const color1 = 0x3333ff;
+        const color2 = 0xFFCC33;
+        const intensity = 3;
+        const lightF = new THREE.AmbientLight(color1, intensity);
+        const lightB = new THREE.PointLight(color2, intensity);
+        lightF.position.set(-7, 14, -8);
+        lightB.position.set(-7, 4, 2);
+        scene.add(lightF);
+        scene.add(lightB);
+        // plane
+        const planeWid = 10;
+        const planeHei = 10;
+        const planeScaleNum = 5;
+
+        const planeGEO = new THREE.PlaneGeometry(planeWid, planeHei);
+        planeGEO.scale(planeScaleNum, planeScaleNum, planeScaleNum);
+        const plane = new THREE.Mesh(planeGEO, mat1);
+        scene.add(plane);
+        // speed
+        const speedArr = [0.1, 0.2, 0.25, 0.5];
+        let speedIndex = 2;
+        let speed = speedArr[speedIndex];
+        let speedChange = false;
+
+        // snake arr
+        const snakeAll = [];
+        const snakeWid = 1;
+        // num(only for int)
+        let num = snakeWid / speed + 1;
+        const fillZ=-100;
+        const snakeGEO = new THREE.PlaneGeometry(snakeWid, snakeWid);
+        snakeGEO.scale(1, 1, 1);
+        const snake = new THREE.Mesh(snakeGEO, mat2);
+        snake.position.z = 1;
+
+        snakeAll.push({ '0': snake, position: new Array(num).fill([0, fillZ, fillZ]) });
+        console.log(snakeAll)
+        plane.add(snake);
+
+        //control
+        const moveArr = [{ '0': 0 }, { '1': 0 }, { '2': 0 }, { '3': 0 }];//up right left down
+        window.onkeydown = function (key) {
+            // console.log(key.code)
+            for (let i = 0; i < moveArr.length; i++) {
+                moveArr[i][i] = 0;
+            };
+            if (key.code == 'KeyW') {
+                moveArr[0]['0'] = 1;
+            };
+            if (key.code == 'KeyD') {
+                moveArr[1]['1'] = 1;
+            };
+            if (key.code == 'KeyA') {
+                moveArr[2]['2'] = 1;
+            };
+            if (key.code == 'KeyS') {
+                moveArr[3]['3'] = 1;
+            };
+
+        }
+        let food = initFood();
+
+        const tempArr = [false, false];
+        function animate(time) {
+            time = time / 1000;
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+            movedir(moveArr);
+
+            let res = isOverlay();
+            let iscarsh = false;
+
+            tempArr.push(res);
+            tempArr.shift();
+            if (tempArr[0] == false && tempArr[1] == true) {
+                plane.remove(food)
+                food = initFood();
+                console.log(snakeAll)
+                // add snake length
+                createLen()
+            };
+            if (speedChange) {
+                console.log(num)
+                snakeAll.forEach((ele)=>{
+                    // const newPosiArr=new Array(num).fill([0,0,1]);
+                    // newPosiArr.push([...ele.position[ele.position.length-1]]);
+                    ele.position=new Array(num).fill([0, fillZ, fillZ]);
+                })
+                speedChange = false;
+            }
+            let continuePosi = recordBodyPosition(num, snakeAll[0].position, snake.position);
+            if(continuePosi) {
+                changeBodyPosi();
+            }
+            if (!(iscarsh = crashJudge())) {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            } else {
+                alert('carsh!You fail')
+            };
+        }
+        requestAnimationFrame(animate);
+
+
+
+        function movedir(arr) {
+            if (arr[0]['0']) {
+                snake.position.y += speed
+            };
+            if (arr[1]['1']) {
+                snake.position.x += speed
+            };
+            if (arr[2]['2']) {
+                snake.position.x -= speed
+            };
+            if (arr[3]['3']) {
+                snake.position.y -= speed
+            }
+        }
+
+        function initFood() {
+            const foodGEO = new THREE.PlaneGeometry(1, 1);
+            foodGEO.scale(1, 1, 1);
+            const food = new THREE.Mesh(foodGEO, new THREE.MeshPhongMaterial({ color: 0x00ffff }));
+            food.position.z = 1;
+
+            food.position.x = randomFoodPosition();
+            food.position.y = randomFoodPosition();
+            plane.add(food);
+            return food;
+        };
+
+
+        function randomFoodPosition() {
+            if (Math.random() >= 0.5) {
+                return -Math.random() * (planeWid * 2);
+            } else {
+                return Math.random() * (planeWid * 2)
+            }
+        };
+        function isOverlay() {
+            if (Math.abs(snake.position.x - food.position.x) < snakeWid && Math.abs(snake.position.y - food.position.y) < snakeWid) {
+                return true;
+            }
+            else {
+                return false;
+            };
+        };
+
+        function createLen() {
+            const bodyGEO = new THREE.PlaneGeometry(snakeWid, snakeWid);
+            bodyGEO.scale(1, 1, 1);
+            const body = new THREE.Mesh(bodyGEO, mat2);
+            body.position.z = 1;
+            snakeAll.push({ [snakeAll.length]: body, position: new Array(num).fill([0,fillZ,fillZ]) });
+            plane.add(body);
+        }
+
+        // record head position
+        function recordBodyPosition(num, snakeArr, position) {
+            let recordFine = false;
+            if (snakeArr.length < num) {
+                snakeArr.push([...position]);
+            }
+            else {
+                snakeArr.push([...position]);
+                snakeArr.shift();
+            }
+            if (snakeArr[0][0] == 0 && snakeArr[0][1] == 0 && snakeArr[0][2] == fillZ) {
+                recordFine=false;
+            } else {
+                recordFine = true;
+            }
+            return recordFine;
+        }
+        // bidy position change
+        function changeBodyPosi() {
+            snakeAll.forEach((ele, index) => {
+                if (index == 0) return;
+                else {
+                    if (ele.position.length < num) {
+                        ele.position.push([...(snakeAll[index - 1].position[0])]);
+
+                    } else {
+                        ele.position.push([...(snakeAll[index - 1].position[0])]);
+                        ele.position.shift();
+                    }
+                    ele[index].position.x = ele.position[ele.position.length - 1][0];
+                    ele[index].position.y = ele.position[ele.position.length - 1][1];
+                }
+            })
+        }
+        // crash judge
+        function crashJudge() {
+            const snakeX = snakeAll[0].position[snakeAll[0].position.length - 1][0];
+            const snakeY = snakeAll[0].position[snakeAll[0].position.length - 1][1];
+            let iscarsh = false;
+            if ((Math.abs(snakeX) > (planeWid / 2) * planeScaleNum - snakeWid || Math.abs(snakeY) > planeHei / 2 * planeScaleNum - snakeWid)) {
+                iscarsh = true;
+                return iscarsh;
+            }
+            for (let i = 0; i < snakeAll.length; i++) {
+                if (i == 0) continue;
+                else {
+                    if (Math.abs(snakeX - snakeAll[i][i].position.x) < snakeWid * 0.4 && Math.abs(snakeY - snakeAll[i][i].position.y) < snakeWid * 0.4) {
+                        iscarsh = true;
+                        return iscarsh;
+                    }
+                }
+            };
+
+        }
+
+        acclerate.onclick = function () {
+            speedIndex = speedIndex + 1;
+            if (speedIndex == 4) {
+                speedIndex = 0;
+            }
+            speed = speedArr[speedIndex];
+            speedChange = true;
+            changeNum();
+            function changeNum() {
+                num = snakeWid / speed + 1;
+            }
+        }
+    </script>
+</body>
+
+</html>
